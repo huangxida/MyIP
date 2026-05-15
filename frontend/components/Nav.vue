@@ -87,7 +87,7 @@
                     <span class="truncate text-sm font-semibold leading-none">{{ userName }}</span>
                     <span v-if="remoteUserInfoFetched">
                       <Badge :class="levelBadgeClass" class="border-transparent text-[10px] font-medium px-1.5 py-0 h-4">
-                        {{ t('user.Level.' + remoteUserInfo.userLevel) }}
+                        {{ t('user.Level.' + userLevel) }}
                       </Badge>
                     </span>
                     <span v-else class="text-xs text-muted-foreground">{{ t('user.Fields.Fetching') }}</span>
@@ -101,7 +101,7 @@
                   <div class="flex items-baseline justify-between gap-2">
                     <dt class="text-muted-foreground">{{ t('user.Fields.FunctionUses') }}</dt>
                     <dd class="font-medium">
-                      <span v-if="remoteUserInfoFetched">{{ remoteUserInfo.functionUses.total }} {{ t('user.Fields.Times') }}</span>
+                      <span v-if="remoteUserInfoFetched">{{ functionUsesTotal }} {{ t('user.Fields.Times') }}</span>
                       <span v-else class="text-muted-foreground">{{ t('user.Fields.Fetching') }}</span>
                     </dd>
                   </div>
@@ -220,10 +220,15 @@ const userPhotoURL = computed(() => store.user?.photoURL);
 const userCreatedAt = computed(() => unixToDateTime(store.user?.metadata.createdAt));
 const remoteUserInfo = computed(() => store.remoteUserInfo);
 const remoteUserInfoFetched = computed(() => store.remoteUserInfoFetched);
+const userLevel = computed(() => remoteUserInfo.value?.userLevel || 'Standard');
+const functionUsesTotal = computed(() => {
+  const total = Number(remoteUserInfo.value?.functionUses?.total ?? 0);
+  return Number.isFinite(total) ? total : 0;
+});
 
 // Level Badge Color: mapped to semantic token, keep each level color distinction
 const levelBadgeClass = computed(() => {
-  const level = remoteUserInfo.value?.userLevel;
+  const level = userLevel.value;
   switch (level) {
     case 'Premium':        return 'bg-action text-action-foreground';   
     case 'Owner':          return 'bg-foreground text-background';      

@@ -51,6 +51,26 @@ const isUpdateAchievementsSuccess = ref(false);
 
 const isOpen = ref(false);
 
+const createDefaultRemoteUserInfo = () => ({
+    userLevel: 'Standard',
+    achievements: {},
+    functionUses: { total: 0 },
+});
+
+const normalizeRemoteUserInfo = (data = {}) => {
+    const functionUses = data.functionUses && typeof data.functionUses === 'object' ? data.functionUses : {};
+    const total = Number(functionUses.total ?? 0);
+
+    return {
+        userLevel: data.userLevel || 'Standard',
+        achievements: data.achievements && typeof data.achievements === 'object' ? data.achievements : {},
+        functionUses: {
+            ...functionUses,
+            total: Number.isFinite(total) ? total : 0,
+        },
+    };
+};
+
 const openUserBenefits = () => {
     isOpen.value = true;
     store.triggerUserBenefits = false;
@@ -60,13 +80,18 @@ const openUserBenefits = () => {
 // Fetch user info
 const getUserInfo = async () => {
     if (remoteUserInfoFetched.value || !isSignedIn.value) return;
+    if (store.configs.ipChecking === false) {
+        store.remoteUserInfo = createDefaultRemoteUserInfo();
+        store.remoteUserInfoFetched = true;
+        return;
+    }
     try {
         const response = await authenticatedFetch(`/api/getuserinfo`);
-        const data = response;
-        store.remoteUserInfo = data;
+        store.remoteUserInfo = normalizeRemoteUserInfo(response);
         initUserAchievements();
     } catch (error) {
         console.error('Error fetching user info:', error);
+        store.remoteUserInfo = createDefaultRemoteUserInfo();
     }
     store.remoteUserInfoFetched = true;
 };
@@ -75,7 +100,11 @@ const getUserInfo = async () => {
 const initUserAchievements = () => {
     if (!remoteUserInfo.value) return;
 
-    const { achievements, functionUses } = remoteUserInfo.value;
+    const achievements = remoteUserInfo.value.achievements && typeof remoteUserInfo.value.achievements === 'object'
+        ? remoteUserInfo.value.achievements
+        : {};
+    const total = Number(remoteUserInfo.value.functionUses?.total ?? 0);
+    const functionUsesTotal = Number.isFinite(total) ? total : 0;
     Object.entries(achievements).forEach(([key, value]) => {
         if (store.userAchievements[key]) {
             store.userAchievements[key].achieved = value.achieved;
@@ -87,7 +116,7 @@ const initUserAchievements = () => {
         if (!store.userAchievements.IAmHuman.achieved) {
             store.setTriggerUpdateAchievements('IAmHuman');
         }
-        if (!store.userAchievements.MakingBigNews.achieved && functionUses.total > 1000) {
+        if (!store.userAchievements.MakingBigNews.achieved && functionUsesTotal > 1000) {
             store.setTriggerUpdateAchievements('MakingBigNews');
         }
     }

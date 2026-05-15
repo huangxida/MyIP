@@ -164,7 +164,7 @@ export const useMainStore = defineStore('main', {
     },
     // fetch configs from server
     fetchConfigs() {
-      fetchWithTimeout('/api/configs')
+      return fetchWithTimeout('/api/configs')
         .then(response => {
           if (!response.ok) {
             throw new Error('Network response was not ok');
@@ -224,6 +224,8 @@ export const useMainStore = defineStore('main', {
         await firebaseSignOut(auth);
         this.user = null;
         this.isSignedIn = false;
+        this.remoteUserInfo = {};
+        this.remoteUserInfoFetched = false;
       } catch (error) {
         console.error("Sign out failed:", error);
       }

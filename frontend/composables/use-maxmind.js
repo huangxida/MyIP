@@ -1,5 +1,5 @@
 // Shared client-side MaxMind lookup for components that need to enrich a
-// raw IP with country + ISP. 
+// raw IP with country + ISP.
 // Returns `{ country_code, country, org }` on success. Returns `null` on
 // every failure path (no MaxMind source, network error, malformed
 // upstream payload) so callers don't have to disambiguate.

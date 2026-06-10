@@ -1,0 +1,110 @@
+# Deploys tagged MyIP builds to the los3 host through the ca1 self-hosted runner.
+name: Deploy to los3
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: deploy-myip-los3
+  cancel-in-progress: false
+
+env:
+  IMAGE: xidahuang/myip
+  TARBALL: /tmp/myip-image.tar.gz
+  REMOTE_TARBALL: /tmp/myip-incoming.tar.gz
+  REMOTE_COMPOSE_DIR: /root/myip
+  IMAGE_VERSION: ${{ github.ref_name }}
+
+jobs:
+  build-and-deploy:
+    runs-on: [self-hosted, ca1, myip]
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+
+      - name: Build image on ca1
+        run: |
+          docker build \
+            --build-arg VITE_GOOGLE_ANALYTICS_ID="${{ secrets.VITE_GOOGLE_ANALYTICS_ID }}" \
+            --build-arg VITE_FIREBASE_API_KEY="${{ secrets.VITE_FIREBASE_API_KEY }}" \
+            --build-arg VITE_FIREBASE_AUTH_DOMAIN="${{ secrets.VITE_FIREBASE_AUTH_DOMAIN }}" \
+            --build-arg VITE_FIREBASE_PROJECT_ID="${{ secrets.VITE_FIREBASE_PROJECT_ID }}" \
+            -t "$IMAGE:latest" \
+            -t "$IMAGE:${IMAGE_VERSION}" \
+            .
+          docker images "$IMAGE" | head -5
+
+      - name: Save image to tarball
+        run: |
+          rm -f "$TARBALL"
+          docker save "$IMAGE:latest" | gzip -1 > "$TARBALL"
+          ls -lh "$TARBALL"
+
+      - name: Transfer image to los3
+        run: |
+          scp -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15 "$TARBALL" los3:"$REMOTE_TARBALL"
+
+      - name: Load and restart on los3
+        run: |
+          ssh -o ConnectTimeout=15 los3 "bash -s" <<REMOTE
+          set -euo pipefail
+          cd "$REMOTE_COMPOSE_DIR"
+          echo "[los3] loading image..."
+          docker load < "$REMOTE_TARBALL"
+          echo "[los3] compose up -d..."
+          docker compose up -d
+          echo "[los3] pruning dangling images..."
+          docker image prune -f
+          echo "[los3] cleanup tarball..."
+          rm -f "$REMOTE_TARBALL"
+          echo "[los3] container status:"
+          docker ps --filter name=myip --format 'table {{.Names}}\t{{.Image}}\t{{.Status}}'
+          echo "[los3] waiting for local HTTP..."
+          for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
+            if curl -fsSI --max-time 5 http://127.0.0.1:18966/ | head -5; then
+              exit 0
+            fi
+            sleep 2
+          done
+          curl -fsSI --max-time 10 http://127.0.0.1:18966/ | head -5
+          REMOTE
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          api_base="https://api.github.com/repos/${REPOSITORY}/releases"
+          auth_header="Authorization: Bearer ${GH_TOKEN}"
+          accept_header="Accept: application/vnd.github+json"
+          version_header="X-GitHub-Api-Version: 2022-11-28"
+
+          if curl -fsS -H "$auth_header" -H "$accept_header" -H "$version_header" \
+            "${api_base}/tags/${TAG_NAME}" >/tmp/myip-release.json 2>/dev/null; then
+            echo "Release ${TAG_NAME} already exists."
+            exit 0
+          fi
+
+          payload=$(printf '{"tag_name":"%s","name":"%s","generate_release_notes":true,"draft":false,"prerelease":false}' "$TAG_NAME" "$TAG_NAME")
+          curl -fsS -X POST \
+            -H "$auth_header" \
+            -H "$accept_header" \
+            -H "$version_header" \
+            "$api_base" \
+            -d "$payload" >/tmp/myip-release.json
+          echo "Created release ${TAG_NAME}."
+
+      - name: Cleanup tarball on ca1
+        if: always()
+        run: rm -f "$TARBALL"

@@ -12,8 +12,6 @@ on:
 # Least-privilege GITHUB_TOKEN:
 # - contents: read  → checkout the source
 # - packages: write → push the built image to ghcr.io/${owner}/myip
-# Docker Hub push uses DOCKER_HUB_ACCESS_TOKEN (a repo secret), not GITHUB_TOKEN,
-# so no extra scopes are needed for that half of the job.
 permissions:
   contents: read
   packages: write
@@ -29,12 +27,6 @@ jobs:
 
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v4
-
-    - name: Login to Docker Hub
-      uses: docker/login-action@v4
-      with:
-        username: ${{ secrets.DOCKER_HUB_USERNAME }}
-        password: ${{ secrets.DOCKER_HUB_ACCESS_TOKEN }}
 
     - name: Login to GitHub Packages
       uses: docker/login-action@v4
@@ -60,8 +52,6 @@ jobs:
       with:
         push: true
         tags: |
-          jason5ng32/myip:latest
-          jason5ng32/myip:${{ env.RELEASE_VERSION }}
           ghcr.io/${{ github.repository_owner }}/myip:latest
           ghcr.io/${{ github.repository_owner }}/myip:${{ env.RELEASE_VERSION }}
         labels: |
